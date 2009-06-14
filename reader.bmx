@@ -83,6 +83,8 @@ Type JReader
 	
 	Method Parse:JValue()
 		root = ReadValue(NextToken())
+		_strbuf = Null
+		_offset = 0
 		Return root
 	End Method
 	
