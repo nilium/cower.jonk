@@ -51,7 +51,7 @@ Function JHexCharToByte:Int(char:Int)
 	ElseIf char >= 48 And char <= 58 Then
 			Return _HexAF[char-48]
 	EndIf
-	Throw "Invalid hex character "+char
+	Throw "JHexCharToByte: Invalid hex character "+char
 End Function
 
 Public
@@ -101,9 +101,9 @@ Type JReader
 	End Method
 	
 	Method ReadStringValue:JString(tok:JToken)
-		Assert tok, "Token is null"
+		Assert tok, "JReader#ReadStringValue: Token is null"
 		If tok.token <> JTokenString Then
-			Throw "Expected {, found "+StringForToken(tok)
+			Throw "JReader#ReadStringValue: Expected {, found "+StringForToken(tok)
 		EndIf
 		
 		Rem
@@ -128,7 +128,7 @@ Type JReader
 			char = str[idx]
 			Select char
 				Case CEscape
-					' Try
+					Try
 						idx :+ 1
 						char = str[idx]
 						Select char
@@ -151,14 +151,14 @@ Type JReader
 							Case 101 ' \e
 								p[0] = 27
 							Case 117
-								p[0] = ("$"+str[idx+1..idx+5]).ToInt()'Short((JHexCharToByte(str[idx+1]) Shr 12)|(JHexCharToByte(str[idx+2]) Shr 8)|(JHexCharToByte(str[idx+3]) Shr 4)|JHexCharToByte(str[idx+4]))
+								p[0] = Short((JHexCharToByte(str[idx+1]) Shl 12)|(JHexCharToByte(str[idx+2]) Shl 8)|(JHexCharToByte(str[idx+3]) Shl 4)|JHexCharToByte(str[idx+4]))
 								idx :+ 4
 							Default
 								p[0] = char
 						End Select
-					' Catch o:Object
-					' 	Throw "Malformed escape in ~q"+str+"~q at offset "+idx
-					' End Try
+					Catch o:Object
+						Throw "JReader#ReadStringValue: Malformed escape in ~q"+str+"~q at offset "+idx
+					End Try
 				Default
 					p[0] = char
 			End Select
@@ -171,9 +171,9 @@ Type JReader
 	End Method
 	
 	Method ReadArrayValue:JArray(tok:JToken)
-		Assert tok, "Token is null"
+		Assert tok, "JReader#ReadArrayValue: Token is null"
 		If tok.token <> JTokenArrayBegin Then
-			Throw "Expected {, found "+StringForToken(tok)
+			Throw "JReader#ReadArrayValue: Expected {, found "+StringForToken(tok)
 		EndIf
 		
 		Local values:TList = New TList
@@ -194,7 +194,7 @@ Type JReader
 				Case JTokenArrayEnd
 					Exit
 				Default
-					Throw "Malformed array: "+StringForToken(tok)
+					Throw "JReader#ReadArrayValue: Malformed array: "+StringForToken(tok)
 			End Select
 		Wend
 		
@@ -202,9 +202,9 @@ Type JReader
 	End Method
 	
 	Method ReadObjectValue:JObject(tok:JToken)
-		Assert tok, "Token is null"
+		Assert tok, "JReader#ReadObjectValue: Token is null"
 		If tok.token <> JTokenObjectBegin Then
-			Throw "Expected {, found "+StringForToken(tok)
+			Throw "JReaded#ReadObjectValue: Expected {, found "+StringForToken(tok)
 		EndIf
 		
 		Local obj:JObject = New JObject
@@ -215,7 +215,7 @@ Type JReader
 			
 			Select tok.Token
 				Case JTokenEof
-					Throw "Expected } but reached EOF"
+					Throw "JReaded#ReadObjectValue: Expected } but reached EOF"
 				Case JTokenString
 					name = ReadStringValue(tok)
 					NextToken(JTokenValueSep, ":")
@@ -223,7 +223,7 @@ Type JReader
 					obj.SetValueForName(name.GetValue(),value)
 				Case JTokenArraySep
 					If Not name Then
-						Throw "Expected } or name, found name separator"
+						Throw "JReader#ReadObjectValue: Expected } or name, found name separator"
 					Else
 						name = ReadStringValue(NextToken(JTokenString, "name"))
 						NextToken(JTokenValueSep, ":")
@@ -233,14 +233,14 @@ Type JReader
 				Case JTokenObjectEnd
 					Exit
 				Default
-					Throw "Invalid token "+StringForToken(tok)
+					Throw "JReader#ReadObjectValue: Invalid token "+StringForToken(tok)
 			End Select
 		Wend
 		Return obj
 	End Method
 	
 	Method ReadValue:JValue(tok:JToken)
-		Assert tok, "Token is null"
+		Assert tok, "JReader#ReadValue: Token is null"
 		
 		Select tok.token
 			Case JTokenObjectBegin
@@ -263,6 +263,7 @@ Type JReader
 			Case JTokenFalse
 				Return JFalse
 			Case JTokenEof
+				Throw "JReader#ReadValue: Invalid value: EOF"
 				Return Null
 			Default
 				Throw "JReader#ReadValue: Invalid token received "+StringForToken(tok)
@@ -279,7 +280,7 @@ Type JReader
 			EndIf
 			_offset :+ 1
 		Wend
-		Throw "Encountered malformed string"
+		Throw "JReader#ReadStringToken: Encountered malformed string"
 	End Method
 	
 	Method ReadNumberToken()
@@ -319,26 +320,26 @@ Type JReader
 				If Matches("rue") Then
 					tok.token = JTokenTrue
 				Else
-					Throw "Invalid literal"
+					Throw "JReader#NextToken: Invalid literal"
 				EndIf
 			Case Cf
 				If Matches("alse") Then
 					tok.token = JTokenFalse
 				Else
-					Throw "Invalid literal"
+					Throw "JReader#NextToken: Invalid literal"
 				EndIf
 			Case Cn
 				If Matches("ull") Then
 					tok.token = JTokenNull
 				Else
-					Throw "Invalid literal"
+					Throw "JReader#NextToken: Invalid literal"
 				EndIf
 			Default
 				If JNumberStartingSet.Contains(char) Then
 					tok.token = JTokenNumber
 					ReadNumberToken
 				Else
-					Throw "Invalid character while parsing JSON string"
+					Throw "JReader#NextToken: Invalid character while parsing JSON string"
 				EndIf
 		End Select
 		
@@ -347,9 +348,9 @@ Type JReader
 		
 		If require <> -1 Then
 			If expected Then
-				Assert tok.token=require, "Expected token "+expected+", found "+StringForToken(tok)
+				Assert tok.token=require, "JReader#NextToken: Expected token "+expected+", found "+StringForToken(tok)
 			Else
-				Assert tok.token, "Invalid token "+StringForToken(tok)
+				Assert tok.token, "JReader#NextToken: Invalid token "+StringForToken(tok)
 			EndIf
 		EndIf
 		
@@ -395,7 +396,7 @@ Type JReader
 			Case JTokenEof
 				Return "EOF"
 			Default
-				Throw "Invalid token "+tok.token
+				Throw "JReader#StringForToken: Invalid token "+tok.token
 		End Select
 	End Method
 End Type
