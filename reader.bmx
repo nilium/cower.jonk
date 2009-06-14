@@ -1,7 +1,7 @@
 SuperStrict
 
+Import brl.LinkedList
 Import cower.Charset
-Import brl.Stream
 
 Import "jobject.bmx"
 
