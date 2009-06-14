@@ -269,6 +269,31 @@ Type JArray Extends JValue Final
 		EndIf
 	End Method
 	
+	Method PrettyString$(tab$="")
+		Local containsObject%=False
+		For Local i:JValue = EachIn _values
+			If i.GetType() = JObjectType Then
+				containsObject = True
+				Exit
+			EndIf
+		Next
+		
+		If containsObject Then
+			Local innerTab$ = tab+"~t"
+			Local outs$ = "[~n"
+			For Local i:Int = 0 Until _values.Length
+				outs :+ innerTab+_values[i].PrettyString(innerTab)
+				If i < _values.Length-1 Then
+					outs :+ ",~n"
+				EndIf
+			Next
+			outs :+ tab+"~n]"
+			Return outs
+		Else
+			Return ToString()
+		EndIf
+	End Method
+	
 	Method ToString$()
 		Local outs$ = "["
 		Local idx:Int
