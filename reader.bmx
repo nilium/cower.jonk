@@ -72,14 +72,8 @@ Type JReader
 	
 	Field root:JValue
 	
-	Field _tokens:TList
-	Field _tokenLink:TLink
 	Field _strbuf$
 	Field _offset:Int
-	
-	Method New()
-		_tokens = New TList
-	End Method
 	
 	Method InitWithString:JReader(str$)
 		_strbuf = str
