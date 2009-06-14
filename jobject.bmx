@@ -377,7 +377,7 @@ Type JString Extends JValue Final
 		For Local i:Int = 0 Until 32
 			val = val.Replace(jstring_escape_codes[i,0], jstring_escape_codes[i,1])
 		Next
-		Return "~q"+_value+"~q"
+		Return "~q"+val+"~q"
 	End Method
 	
 	Method GetValue$()
