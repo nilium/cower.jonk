@@ -272,7 +272,7 @@ Type JArray Extends JValue Final
 	Method PrettyString$(tab$="")
 		Local containsObject%=False
 		For Local i:JValue = EachIn _values
-			If i.GetType() = JObjectType Then
+			If i.GetType() = JObjectType Or i.GetType() = JArrayType Then
 				containsObject = True
 				Exit
 			EndIf
