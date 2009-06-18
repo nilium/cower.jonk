@@ -105,19 +105,7 @@ Type JReader
 		If tok.token <> JTokenString Then
 			Throw "JReader#ReadStringValue: Expected {, found "+StringForToken(tok)
 		EndIf
-		
-		Rem
-		jstring_escape_codes[0, 0] = Chr(0);   jstring_escape_codes[0, 1]  = "\0"
-		jstring_escape_codes[7, 0] = Chr(7);   jstring_escape_codes[7, 1]  = "\a"
-		jstring_escape_codes[8, 0] = Chr(8);   jstring_escape_codes[8, 1]  = "\b"
-		jstring_escape_codes[9, 0] = Chr(9);   jstring_escape_codes[9, 1]  = "\t"
-		jstring_escape_codes[10, 0] = Chr(10); jstring_escape_codes[10, 1] = "\n"
-		jstring_escape_codes[11, 0] = Chr(11); jstring_escape_codes[11, 1] = "\v"
-		jstring_escape_codes[12, 0] = Chr(12); jstring_escape_codes[12, 1] = "\f"
-		jstring_escape_codes[13, 0] = Chr(13); jstring_escape_codes[13, 1] = "\r"
-		jstring_escape_codes[27, 0] = Chr(27); jstring_escape_codes[27, 1] = "\e"
-		EndRem
-		
+				
 		Local str$ = _strbuf[tok.start+1..tok.end_]
 		Local unibuf:Byte[] = [$24:Byte, 0:Byte, 0:Byte, 0:Byte, 0:Byte]
 		Local buf:Short Ptr = Short Ptr(MemAlloc(str.Length*2))
