@@ -5,6 +5,7 @@ Import brl.Map
 Import cower.Charset
 Import cower.Numerical
 
+Import "jsonstring.bmx"
 Import "jsonliterals.bmx"
 
 Private
@@ -41,18 +42,6 @@ Global JFollowingLiteral:TCharacterSet = New TCharacterSet.InitWithString(" ~r~n
 Global JNumberStartingSet:TCharacterSet = New TCharacterSet.InitWithString(".0-9\-")
 Global JDigitSet:TCharacterSet = New TCharacterSet.InitWithString("0-9.\-+eE")
 Global JDoubleSet:TCharacterSet = New TCharacterSet.InitWithString("eE.\-+")
-
-Function JHexCharToByte:Int(char:Int)
-	Global _HexAF:Int[] = [$0, $1, $2, $3, $4, $5, $6, $7, $8, $9, $A, $B, $C, $D, $E, $F]
-	If char >= 97 And char <= 122 Then
-		Return _HexAF[char-87]
-	ElseIf char >= 65 And char <= 90 Then
-			Return _HexAF[char-55]
-	ElseIf char >= 48 And char <= 58 Then
-			Return _HexAF[char-48]
-	EndIf
-	Throw "JHexCharToByte: Invalid hex character "+char
-End Function
 
 Public
 
@@ -108,56 +97,7 @@ Type JReader
 				
 		Local str$ = _strbuf[tok.start+1..tok.end_]
 		
-		Return str
-		Local unibuf:Byte[] = [$24:Byte, 0:Byte, 0:Byte, 0:Byte, 0:Byte]
-		Local buf:Short Ptr = Short Ptr(MemAlloc(str.Length*2))
-		Local bufSize:Int = 0
-		Local p:Short Ptr = buf
-		Local char:Int
-		For Local idx:Int = 0 Until str.Length
-			char = str[idx]
-			Select char
-				Case CEscape
-					Try
-						idx :+ 1
-						char = str[idx]
-						Select char
-							Case 48  ' \0
-								p[0] = 0
-							Case 97  ' \a
-								p[0] = 7
-							Case 98  ' \b
-								p[0] = 8
-							Case 116 ' \t
-								p[0] = 9
-							Case 110 ' \n
-								p[0] = 10
-							Case 118 ' \v
-								p[0] = 11
-							Case 102 ' \f
-								p[0] = 12
-							Case 114 ' \r
-								p[0] = 13
-							Case 101 ' \e
-								p[0] = 27
-							Case 117
-								p[0] = Short((JHexCharToByte(str[idx+1]) Shl 12)|(JHexCharToByte(str[idx+2]) Shl 8)|(JHexCharToByte(str[idx+3]) Shl 4)|JHexCharToByte(str[idx+4]))
-								idx :+ 4
-							Default
-								p[0] = char
-						End Select
-					Catch o:Object
-						Throw "JReader#ReadStringValue: Malformed escape in ~q"+str+"~q at offset "+idx
-					End Try
-				Default
-					p[0] = char
-			End Select
-			p :+ 1
-			bufSize :+ 1
-		Next
-		str = String.FromShorts(buf, bufSize)
-		MemFree(buf)
-		Return str
+		Return DecodeJSONString(str)
 	End Method
 	
 	Method ReadArrayValue:Object[](tok:JToken)
@@ -173,10 +113,8 @@ Type JReader
 		
 		Local values:Object[32]
 		Local val_len:Int = 1
-		Local value:Object
 		
 		values[0] = ReadValue(tok)
-		val_len :+ 1
 		
 		While True
 			tok = NextToken()
