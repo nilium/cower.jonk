@@ -31,6 +31,8 @@ Function JType:Int(obj:Object)
 	
 	Local tid:TTypeId = TTypeId.ForObject(obj)
 	Select tid
+		Case Null
+			Return JNullType
 		Case _mapTypeId
 			Return JObjectType
 		Case _objArrTypeId, ArrayTypeId ' this is called a "hackjob"
@@ -38,20 +40,15 @@ Function JType:Int(obj:Object)
 		Case StringTypeId
 			Return JStringType
 		Default
-			If obj Then
-				If tid.ExtendsType(_numTypeId) Then
-					If TNumber(obj).GetType() = TYPE_BOOL Then
-						Return JBoolType
-					Else
-						Return JNumberType
-					EndIf
-				ElseIf tid.ExtendsType(_mapTypeId) Then
-					Return JObjectType
-				Else
-					Return JInvalidType
-				EndIf
-			Else
-				Return JNullType
+			Local nm:TNumber = TNumber(obj)
+			If nm And nm.GetType() = TYPE_BOOL Then 'literal bool
+				Return JBoolType
+			ElseIf nm Then			'regular number
+				Return JNumberType
+			ElseIf TMap(obj) Then	'check for subclass of TMap
+				Return JObjectType
 			EndIf
 	End Select
+	
+	Return JInvalidType
 End Function
