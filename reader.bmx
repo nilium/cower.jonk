@@ -1,11 +1,13 @@
 SuperStrict
 
 Import brl.LinkedList
+Import brl.Map
 Import cower.Charset
+Import cower.Numerical
 
-Import "jobject.bmx"
+Import "jsonliterals.bmx"
 
-Public
+Private
 
 Const JTokenObjectBegin:Int = 0
 Const JTokenObjectEnd:Int = 1
@@ -19,8 +21,6 @@ Const JTokenNull:Int = 8
 Const JTokenArraySep:Int = 9
 Const JTokenValueSep:Int = 10
 Const JTokenEof:Int = 11
-
-Private
 
 Function Token:JToken(token%, start%, _end%)
 	Local t:JToken = New JToken
@@ -70,7 +70,7 @@ Type JReader
 	Const Ct% = $74
 	Const Cn% = $6E
 	
-	Field root:JValue
+	Field root:Object
 	
 	Field _strbuf$
 	Field _offset:Int
@@ -81,14 +81,14 @@ Type JReader
 		Return Self
 	End Method
 	
-	Method Parse:JValue()
+	Method Parse:Object()
 		root = ReadValue(NextToken())
 		_strbuf = Null
 		_offset = 0
 		Return root
 	End Method
 	
-	Method GetRoot:JValue()
+	Method GetRoot:Object()
 		Return root
 	End Method
 	
@@ -100,13 +100,15 @@ Type JReader
 		Wend
 	End Method
 	
-	Method ReadStringValue:JString(tok:JToken)
+	Method ReadStringValue:String(tok:JToken)
 		Assert tok, "JReader#ReadStringValue: Token is null"
 		If tok.token <> JTokenString Then
 			Throw "JReader#ReadStringValue: Expected {, found "+StringForToken(tok)
 		EndIf
 				
 		Local str$ = _strbuf[tok.start+1..tok.end_]
+		
+		Return str
 		Local unibuf:Byte[] = [$24:Byte, 0:Byte, 0:Byte, 0:Byte, 0:Byte]
 		Local buf:Short Ptr = Short Ptr(MemAlloc(str.Length*2))
 		Local bufSize:Int = 0
@@ -155,30 +157,36 @@ Type JReader
 		Next
 		str = String.FromShorts(buf, bufSize)
 		MemFree(buf)
-		Return New JString.InitWithString(str)
+		Return str
 	End Method
 	
-	Method ReadArrayValue:JArray(tok:JToken)
+	Method ReadArrayValue:Object[](tok:JToken)
 		Assert tok, "JReader#ReadArrayValue: Token is null"
 		If tok.token <> JTokenArrayBegin Then
 			Throw "JReader#ReadArrayValue: Expected {, found "+StringForToken(tok)
 		EndIf
 		
-		Local values:TList = New TList
-		Local value:JValue
-		
 		tok = NextToken()
 		If tok.token = JTokenArrayEnd Then
-			Return New JArray
+			Return New Object[0]
 		EndIf
 		
-		values.AddLast(ReadValue(tok))
+		Local values:Object[32]
+		Local val_len:Int = 1
+		Local value:Object
+		
+		values[0] = ReadValue(tok)
+		val_len :+ 1
 		
 		While True
 			tok = NextToken()
 			Select tok.token
 				Case JTokenArraySep
-					values.AddLast(ReadValue(NextToken()))
+					If val_len = values.Length Then
+						values = values[..values.Length*2]
+					EndIf
+					values[val_len] = ReadValue(NextToken())
+					val_len :+ 1
 				Case JTokenArrayEnd
 					Exit
 				Default
@@ -186,18 +194,22 @@ Type JReader
 			End Select
 		Wend
 		
-		Return New JArray.InitWithList(values)
+		If val_len < values.Length Then
+			Return values[..val_len]
+		Else
+			Return values
+		EndIf
 	End Method
 	
-	Method ReadObjectValue:JObject(tok:JToken)
+	Method ReadObjectValue:TMap(tok:JToken)
 		Assert tok, "JReader#ReadObjectValue: Token is null"
 		If tok.token <> JTokenObjectBegin Then
 			Throw "JReaded#ReadObjectValue: Expected {, found "+StringForToken(tok)
 		EndIf
 		
-		Local obj:JObject = New JObject
-		Local name:JString
-		Local value:JValue
+		Local obj:TMap = New TMap
+		Local name:String
+		Local value:Object
 		While True
 			tok = NextToken()
 			
@@ -208,7 +220,7 @@ Type JReader
 					name = ReadStringValue(tok)
 					NextToken(JTokenValueSep, ":")
 					value = ReadValue(NextToken())
-					obj.SetValueForName(name.GetValue(),value)
+					obj.Insert(name,value)
 				Case JTokenArraySep
 					If Not name Then
 						Throw "JReader#ReadObjectValue: Expected } or name, found name separator"
@@ -216,7 +228,7 @@ Type JReader
 						name = ReadStringValue(NextToken(JTokenString, "name"))
 						NextToken(JTokenValueSep, ":")
 						value = ReadValue(NextToken())
-						obj.SetValueForName(name.GetValue(),value)
+						obj.Insert(name,value)
 					EndIf
 				Case JTokenObjectEnd
 					Exit
@@ -227,7 +239,7 @@ Type JReader
 		Return obj
 	End Method
 	
-	Method ReadValue:JValue(tok:JToken)
+	Method ReadValue:Object(tok:JToken)
 		Assert tok, "JReader#ReadValue: Token is null"
 		
 		Select tok.token
@@ -240,19 +252,18 @@ Type JReader
 			Case JTokenNumber
 				Local ext$ = _strbuf[tok.start..tok.end_+1]
 				If JDoubleSet.FindInString(ext) <> -1 Then
-					Return New JDouble.InitWithNumber(ext.ToDouble())
+					Return TNumber.ForDouble(ext.ToDouble())
 				Else
-					Return New JInt.InitWithNumber(ext.ToInt())
+					Return TNumber.ForInt(ext.ToInt())
 				EndIf
 			Case JTokenNull
-				Return JNull
+				Return Null
 			Case JTokenTrue
 				Return JTrue
 			Case JTokenFalse
 				Return JFalse
 			Case JTokenEof
 				Throw "JReader#ReadValue: Invalid value: EOF"
-				Return Null
 			Default
 				Throw "JReader#ReadValue: Invalid token received "+StringForToken(tok)
 		End Select

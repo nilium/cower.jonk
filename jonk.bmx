@@ -9,5 +9,5 @@ ModuleInfo "URL: http://github.com/nilium/cower.jonk"
 
 Import Brl.Stream
 
-Import "jobject.bmx"
+Import "jsonliterals.bmx"
 Import "reader.bmx"
