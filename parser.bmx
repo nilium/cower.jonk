@@ -147,8 +147,6 @@ Type JParser
 				_strbuf = _strbuf+_stream.ReadLine()
 				Continue
 			EndIf
-			DebugLog "GetChar: Returning -1"
-			DebugStop
 			Return -1
 		Wend
 		If _strbuf[_offset] = 10 Then
@@ -158,7 +156,6 @@ Type JParser
 		EndIf
 		_col :+ 1
 		_offset :+ 1
-		DebugLog "GetChar: Returning "+Chr(_strbuf[_offset])
 		_curChar = _strbuf[_offset]
 		Return _curChar
 	End Method
@@ -177,12 +174,9 @@ Type JParser
 				_strbuf :+ _stream.ReadLine()
 				Continue
 			EndIf
-			DebugLog "PeekChar: Return -1"
-			DebugStop
 			Return -1
 		Wend
 		
-		DebugLog "PeekChar: Returning "+Chr(_strbuf[_offset+n])
 		Return _strbuf[_offset+n]
 	End Method
 	
