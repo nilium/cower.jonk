@@ -16,17 +16,23 @@ Type JException
 	Field error:Int
 	Field message:String
 	Field method_:String
+	Field inner:Object ' inner exception object
 	
-	Function Create:JException(_method$, msg$, err%)
+	Function Create:JException(_method$, msg$, err%, inner:Object=Null)
 		Local ex:JException = New JException
 		ex.error = err
 		ex.message = msg
 		ex.method_ = _method
+		ex.inner = inner
 		Return ex
 	End Function
 	
 	Method ToString$()
-		Return "["+error+"] "+method_+": "+message
+		Local s$ = "["+error+"] "+method_+": "+message
+		If inner Then
+			Return s+"~n"+inner.ToString()
+		EndIf
+		Return s
 	End Method
 End Type
 
@@ -36,11 +42,15 @@ Type JParserException Extends JException
 	Field line:String
 	
 	Method ToString$()
-		Return "["+error+":"+lineNumber+","+column+"] "+method_+": "+message+"~n"+line+"~n"+RSet("^",column)
+		Local s$ = "["+error+":"+lineNumber+","+column+"] "+method_+": "+message+"~n"+line+"~n"+RSet("^",column)
+		If inner Then
+			Return s+"~n"+inner.ToString()
+		EndIf
+		Return s
 	End Method
 End Type
 
-Function ParserException:JParserException(_method:String, msg$, errorcode%, line:String, lineNumber:Int, column:Int)
+Function ParserException:JParserException(_method:String, msg$, errorcode%, line:String, lineNumber:Int, column:Int, inner:Object = Null)
 	Local ex:JParserException = New JParserException
 	ex.error = errorcode
 	ex.lineNumber = lineNumber
@@ -48,5 +58,6 @@ Function ParserException:JParserException(_method:String, msg$, errorcode%, line
 	ex.line = line
 	ex.message = msg
 	ex.method_ = _method
+	ex.inner = inner
 	Return ex
 End Function
