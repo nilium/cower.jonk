@@ -217,8 +217,8 @@ Type JParser
 			Local str$ = _strbuf[tok.start+1..tok.end_]
 			Try
 				str = DecodeJSONString(str)
-			Catch j:JException
-				Throw ParserException(j.method_, j.message, JMalformedStringError, CurrentLine(), _line, _col)
+			Catch ex:Object
+				Throw ParserException("JParser#ReadStringValue", "Error decoding string literal", JMalformedStringError, CurrentLine(), _line, _col, ex)
 			End Try
 			_handler.StringValue(str)
 		EndIf
@@ -237,8 +237,8 @@ Type JParser
 			Local str$ = _strbuf[tok.start+1..tok.end_]
 			Try
 				str = DecodeJSONString(str)
-			Catch j:JException
-				Throw ParserException(j.method_, j.message, JMalformedStringError, CurrentLine(), _line, _col)
+			Catch ex:Object
+				Throw ParserException("JParser#ReadObjectKey", "Error decoding string literal", JMalformedStringError, CurrentLine(), _line, _col, ex)
 			End Try
 			_handler.ObjectKey(str)
 		EndIf

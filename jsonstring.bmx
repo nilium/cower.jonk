@@ -16,7 +16,7 @@ Function JHexCharToByte:Int(char:Int)
 	ElseIf char >= 48 And char <= 58 Then
 			Return _HexAF[char-48]
 	EndIf
-	Throw JException.Create("JHexCharToByte", "Invalid hex character "+char, JInvalidOffsetError)
+	Throw JException.Create("JHexCharToByte", "Invalid hex character ~q"+Chr(char)+"~q", JInvalidOffsetError)
 End Function
 
 Public
@@ -131,7 +131,7 @@ Function DecodeJSONString:String(str:String)
 							p[0] = char
 					End Select
 				Catch o:Object
-					Throw JException.Create("DecodeJSONString", "Malformed escape in ~q"+str+"~q at offset "+idx, JMalformedStringError)
+					Throw MalformedStringException("DecodeJSONString", "Malformed escape in string", str, idx, o)
 				End Try
 			Default
 				p[0] = char

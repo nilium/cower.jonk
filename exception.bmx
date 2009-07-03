@@ -12,6 +12,7 @@ Const JMalformedNumberError%=7
 Const JInvalidCharacterError%=8
 Const JInvalidLiteralError%=9
 
+' Generic exception, used where no specific exception is properly defined
 Type JException
 	Field error:Int
 	Field message:String
@@ -36,6 +37,7 @@ Type JException
 	End Method
 End Type
 
+' Used when parsing
 Type JParserException Extends JException
 	Field lineNumber:Int
 	Field column:Int
@@ -59,5 +61,30 @@ Function ParserException:JParserException(_method:String, msg$, errorcode%, line
 	ex.message = msg
 	ex.method_ = _method
 	ex.inner = inner
+	Return ex
+End Function
+
+' Used in encoding/decoding of JSON strings - error code is always JMalformedStringError
+Type JMalformedStringException Extends JException
+	Field string_:String
+	Field index:Int
+	
+	Method ToString$()
+		Local s$ = "["+error+":"+index+"] "+message+"~n"+string_+"~n"+RSet("^",index)
+		If inner Then
+			Return s+"~n"+inner.ToString()
+		EndIf
+		Return s
+	End Method
+End Type
+
+Function MalformedStringException:JMalformedStringException(methd$, message$, str$, idx%, inner:Object=Null)
+	Local ex:JMalformedStringException = New JMalformedStringException
+	ex.inner = inner
+	ex.error = JMalformedStringError
+	ex.message = message
+	ex.method_ = methd
+	ex.string_ = str
+	ex.index = idx
 	Return ex
 End Function
