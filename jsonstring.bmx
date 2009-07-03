@@ -1,6 +1,7 @@
 SuperStrict
 
 Import cower.Charset
+Import "exception.bmx"
 
 Private
 
@@ -15,7 +16,7 @@ Function JHexCharToByte:Int(char:Int)
 	ElseIf char >= 48 And char <= 58 Then
 			Return _HexAF[char-48]
 	EndIf
-	Throw "JHexCharToByte: Invalid hex character "+char
+	Throw JException.Create("JHexCharToByte", "Invalid hex character "+char, JInvalidOffsetError)
 End Function
 
 Public
@@ -130,7 +131,7 @@ Function DecodeJSONString:String(str:String)
 							p[0] = char
 					End Select
 				Catch o:Object
-					Throw "JReader#ReadStringValue: Malformed escape in ~q"+str+"~q at offset "+idx
+					Throw JException.Create("DecodeJSONString", "Malformed escape in ~q"+str+"~q at offset "+idx, JMalformedStringError)
 				End Try
 			Default
 				p[0] = char

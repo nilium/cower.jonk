@@ -8,8 +8,8 @@ Import cower.Charset
 Import cower.Numerical
 
 Import "jsonstring.bmx"
-Import "jsonliterals.bmx"
 Import "handler.bmx"
+Import "exception.bmx"
 
 Private
 
@@ -42,7 +42,7 @@ End Type
 
 Global JWhitespaceSet:TCharacterSet = TCharacterSet.ForWhitespace()
 Global JFollowingLiteral:TCharacterSet = New TCharacterSet.InitWithString(" ~r~n~t},]")
-Global JNumberStartingSet:TCharacterSet = New TCharacterSet.InitWithString(".0-9\-")
+Global JNumberStartingSet:TCharacterSet = New TCharacterSet.InitWithString(".1-9\-")
 Global JDigitSet:TCharacterSet = New TCharacterSet.InitWithString("0-9.\-+eE")
 Global JDoubleSet:TCharacterSet = New TCharacterSet.InitWithString("eE.\-+")
 
@@ -62,20 +62,37 @@ Type JParser
 	Const Ct% = $74
 	Const Cn% = $6E
 	
-	Field root:Object
-	
+	Field _stream:TStream
 	Field _strbuf$
 	Field _offset:Int
+	Field _lineOff:Int
+	Field _line%
+	Field _col%
+	
+	Field _curChar:Int
 	
 	Field _handler:JParserHandler
 	
-	Method InitWithStream:JParser(stream:TStream, handler:JParserHandler = Null)
-		Return InitWithString(LoadText(stream), handler)
+	' Creates a stream from the object
+	' precondition: for streams that are not TTextStreams, the stream MUST implement ReadString and Size, and all characters must be .
+	Method InitWithStream:JParser(url:Object, handler:JParserHandler = Null)
+		_strbuf = ""
+		_offset = 0
+		
+		_line = 1
+		_col = 1
+		
+		_stream = ReadStream(url)
+		
+		SetHandler(handler)
+		Return Self
 	End Method
 	
 	Method InitWithString:JParser(str$, handler:JParserHandler = Null)
 		_strbuf = str
 		_offset = 0
+		_line = 1
+		_col = 1
 		SetHandler(handler)
 		Return Self
 	End Method
@@ -86,64 +103,159 @@ Type JParser
 		_handler = newhandler
 	End Method
 	
-	Method Parse:Object()
-		ReadValue(NextToken())
+	Method Parse()
+		 ' setup buffer with at least one line, and see if there's anything in it
+		If PeekChar(1) <> -1 Then
+			If _handler Then
+				_handler.BeginParsing()
+				_handler.EndParsing()
+			EndIf
+			Return
+		EndIf
+		_curChar = _strbuf[_offset] ' load first character
+		Local tok:JToken = NextToken()
+		If _handler Then
+			_handler.BeginParsing()
+			Try
+				If tok.token <> JTokenEof Then
+					ReadValue(tok)
+				EndIf
+				_handler.EndParsing()
+			Catch error:JParserException
+				If Not _handler.Error(error) Then
+					Throw error
+				EndIf
+			End Try
+		Else
+			If tok.token <> JTokenEof Then
+				ReadValue(tok)
+			EndIf
+		EndIf
 	End Method
 	
 	' PRIVATE
 	
 	Method SkipWhitespace()
-		While _offset < _strbuf.Length And JWhitespaceSet.Contains(_strbuf[_offset])
-			_offset :+ 1
+		While _curChar <> -1 And JWhitespaceSet.Contains(_curChar)
+			GetChar()
 		Wend
 	End Method
 	
 	Method GetChar%() NoDebug
-		Assert _offset < (_strbuf.Length-1) Else "JParser#GetChar: Attempt to get chararacter after end of buffer"
+		While (_strbuf.Length-1) <= _offset
+			If _stream And Not _stream.Eof() Then
+				_strbuf = _strbuf+_stream.ReadLine()
+				Continue
+			EndIf
+			DebugLog "GetChar: Returning -1"
+			DebugStop
+			Return -1
+		Wend
+		If _strbuf[_offset] = 10 Then
+			_lineOff = _offset + 1
+			_line :+ 1
+			_col = 1
+		EndIf
 		_offset :+ 1
+		DebugLog "GetChar: Returning "+Chr(_strbuf[_offset])
+		_curChar = _strbuf[_offset]
+		Return _curChar
 	End Method
 	
-	Method CurrentChar%() NoDebug
-		Return PeekChar(0)
-	End Method
-	
-	' Peaks @n chars ahead
+	' Peaks @n chars ahead - if n is greater than the buffer size, it will add as many lines to the
+	' buffer as is necessary until either EOF is reached or the buffer is large enough
+	' A negative @n will cause an exception to be thrown
 	Method PeekChar%(n%) NoDebug
-		Assert n>=0 Else "JParser#PeekChar: Negative peek offset is invalid"
-		Assert _offset+n < _strbuf.Length Else "JParser#PeekChar: Peek offset outside of buffer"
+		If n < 0 Then
+			Throw JException.Create("JParser#PeekChar", "Negative peek offset is invalid", JInvalidOffsetError)
+		EndIf
+		
+		Local off:Int = _offset+n
+		While _strbuf.Length <= off
+			If _stream And Not _stream.Eof() Then
+				_strbuf :+ _stream.ReadLine()
+				Continue
+			EndIf
+			DebugLog "PeekChar: Return -1"
+			DebugStop
+			Return -1
+		Wend
+		
+		DebugLog "PeekChar: Returning "+Chr(_strbuf[_offset+n])
 		Return _strbuf[_offset+n]
 	End Method
 	
+	Method Position%()
+		Return _offset
+	End Method
+	
+	Method Skip(n%) NoDebug
+		If n < 0 Then
+			Throw JException.Create("JParser#Skip", "Negative skip amount is invalid", JInvalidOffsetError)
+		EndIf
+		
+		While n And GetChar() <> -1
+			n :- 1
+		Wend
+	End Method
+	
+	Method CurrentLine$()
+		Local nextEndline%
+		For nextEndline = _lineOff Until _strbuf.Length
+			If _strbuf[nextEndline] = 10 Then
+				Exit
+			EndIf
+		Next
+		Return _strbuf[_lineOff..nextEndLine]
+	End Method
+	
 	Method ReadStringValue(tok:JToken)
-		Assert tok, "JParser#ReadStringValue: Token is null"
+		If Not tok Then
+			Throw JException.Create("JParser#ReadStringValue", "Token is null", JNullTokenError)
+		EndIf
+		
 		If tok.token <> JTokenString Then
-			Throw "JParser#ReadStringValue: Expected string literal, found "+StringForToken(tok)
+			Throw ParserException("JParser#ReadStringValue", "Expected string literal, found "+StringForToken(tok), JInvalidTokenError, CurrentLine(), _line, _col)
 		EndIf
 		
 		If _handler Then
 			Local str$ = _strbuf[tok.start+1..tok.end_]
-			str = DecodeJSONString(str)
+			Try
+				str = DecodeJSONString(str)
+			Catch j:JException
+				Throw ParserException(j.method_, j.message, JMalformedStringError, CurrentLine(), _line, _col)
+			End Try
 			_handler.StringValue(str)
 		EndIf
 	End Method
 	
 	Method ReadObjectKey(tok:JToken)
-		Assert tok, "JParser#ReadObjectKey: Token is null"
+		If Not tok Then
+			Throw JException.Create("JParser#ReadObjectKey", "Token is null", JNullTokenError)
+		EndIf
+		
 		If tok.token <> JTokenString Then
-			Throw "JParser#ReadObjectKey: Expected string literal, found "+StringForToken(tok)
+			Throw ParserException("JParser#ReadObjectKey", "Expected string literal, found "+StringForToken(tok), JInvalidTokenError, CurrentLine(), _line, _col)
 		EndIf
 
 		If _handler Then
 			Local str$ = _strbuf[tok.start+1..tok.end_]
-			str = DecodeJSONString(str)
+			Try
+				str = DecodeJSONString(str)
+			Catch j:JException
+				Throw ParserException(j.method_, j.message, JMalformedStringError, CurrentLine(), _line, _col)
+			End Try
 			_handler.ObjectKey(str)
 		EndIf
 	End Method
 	
 	Method ReadArrayValue(tok:JToken)
-		Assert tok, "JParser#ReadArrayValue: Token is null"
+		If Not tok Then
+			Throw JException.Create("JParser#ReadArrayValue", "Token is null", JNullTokenError)
+		EndIf
+		
 		If tok.token <> JTokenArrayBegin Then
-			Throw "JParser#ReadArrayValue: Expected [, found "+StringForToken(tok)
+			Throw ParserException("JParser#ReadArrayValue", "Expected [, found "+StringForToken(tok), JInvalidTokenError, CurrentLine(), _line, _col)
 		EndIf
 		
 		If _handler Then _handler.ArrayBegin()
@@ -165,15 +277,18 @@ Type JParser
 					If _handler Then _handler.ArrayEnd()
 					Exit
 				Default
-					Throw "JParser#ReadArrayValue: Malformed array: "+StringForToken(tok)
+					Throw ParserException("JParser#ReadArrayValue", "Malformed array: "+StringForToken(tok), JMalformedArrayError, CurrentLine(), _line, _col)
 			End Select
 		Wend
 	End Method
 	
 	Method ReadObjectValue(tok:JToken)
-		Assert tok, "JParser#ReadObjectValue: Token is null"
+		If Not tok Then
+			Throw JException.Create("JParser#ReadObjectValue", "Token is null", JNullTokenError)
+		EndIf
+		
 		If tok.token <> JTokenObjectBegin Then
-			Throw "JReaded#ReadObjectValue: Expected {, found "+StringForToken(tok)
+			Throw ParserException("JReaded#ReadObjectValue", "Expected {, found "+StringForToken(tok), JInvalidTokenError, CurrentLine(), _line, _col)
 		EndIf
 		
 		If _handler Then _handler.ObjectBegin()
@@ -183,11 +298,18 @@ Type JParser
 		While True
 			tok = NextToken()
 			
-			Assert tok.token = JTokenEof Else "JParser#ReadObjectValue: Expected } or field but reached EOF"
+			If tok.token = JTokenEof Then
+				Throw ParserException("JParser#ReadObjectValue", "Expected } or field but reached EOF", JInvalidTokenError, CurrentLine(), _line, _col)
+			EndIf
+			
+			
 			
 			Select tok.token
 				Case JTokenString
-					Assert valueread = False Else "JParser#ReadObjectValue: Expected , but found string literal"
+					If valueread Then
+						Throw ParserException("JParser#ReadObjectValue", "Expected , but found string literal", JInvalidTokenError, CurrentLine(), _line, _col)
+					EndIf
+					
 					
 					ReadObjectKey(tok)
 					NextToken(JTokenValueSep, ":")
@@ -195,7 +317,10 @@ Type JParser
 					valueread = True
 						
 				Case JTokenArraySep
-					Assert valueread = False Else "JParser#ReadObjectValue: Expected } or name, found field separator"
+					If Not valueread Then
+						Throw ParserException("JParser#ReadObjectValue", "Expected } or name, found field separator", JInvalidTokenError, CurrentLine(), _line, _col)
+					EndIf
+					
 					valueread = False
 					
 				Case JTokenObjectEnd
@@ -203,13 +328,16 @@ Type JParser
 					Exit
 					
 				Default
-					Throw "JParser#ReadObjectValue: Invalid token "+StringForToken(tok)
+					Throw ParserException("JParser#ReadObjectValue", "Invalid token "+StringForToken(tok), JInvalidTokenError, CurrentLine(), _line, _col)
 			End Select
 		Wend
 	End Method
 	
 	Method ReadValue:Object(tok:JToken)
-		Assert tok, "JParser#ReadValue: Token is null"
+		If Not tok Then
+			Throw JException.Create("JParser#ReadValue", "Token is null", JNullTokenError)
+		EndIf
+		
 		
 		Select tok.token
 			Case JTokenObjectBegin
@@ -234,41 +362,76 @@ Type JParser
 			Case JTokenFalse
 				If _handler Then _handler.BooleanValue(False)
 			Case JTokenEof
-				Throw "JParser#ReadValue: Invalid value: EOF"
+				Throw ParserException("JParser#ReadValue", "No value found; reached EOF", JInvalidTokenError, CurrentLine(), _line, _col)
 			Default
-				Throw "JParser#ReadValue: Invalid token received "+StringForToken(tok)
+				Throw ParserException("JParser#ReadValue", "Invalid token received "+StringForToken(tok), JInvalidTokenError, CurrentLine(), _line, _col)
 		End Select
 	End Method
 	
 	Method ReadStringToken()
-		_offset :+ 1
-		While _offset < _strbuf.Length
-			If _strbuf[_offset] = CEscape Then
-				_offset :+ 1
-			ElseIf _strbuf[_offset] = CQuote Then
+		Local char% = GetChar()
+		While char <> -1
+			If char = CEscape Then
+				GetChar()
+			ElseIf char = CQuote Then
 				Return
 			EndIf
-			_offset :+ 1
+			
+			char = GetChar()
 		Wend
-		Throw "JParser#ReadStringToken: Encountered malformed string"
+		Throw ParserException("JParser#ReadStringToken", "Encountered malformed string", JMalformedStringError, CurrentLine(), _line, _col)
 	End Method
 	
 	Method ReadNumberToken()
-		While _offset+1 < _strbuf.Length And JDigitSet.Contains(_strbuf[_offset+1])
-			_offset :+1
+		Local eFound%=False, decFound%=(_curChar=46)
+		Local char% = PeekChar(1)
+		While char <> -1
+			If char = 46 Then
+				If decFound Then
+					Throw ParserException("JParser#ReadNumbertoken", "Malformed fractional component in number, fraction already defined", JMalformedNumberError, CurrentLine(), _line, _col)
+				ElseIf eFound Then
+					Throw ParserException("JParser#ReadNumbertoken", "Malformed fractional component in number, exponent already defined", JMalformedNumberError, CurrentLine(), _line, _col)
+				EndIf
+				decFound = True
+			ElseIf char = 69 Or char = 101 Then	' "E" and "e"
+				If eFound Then
+					Throw ParserException("JParser#ReadNumbertoken", "Malformed exponent in number, exponent already defined", JMalformedNumberError, CurrentLine(), _line, _col)
+				EndIf
+				
+				eFound = True
+				GetChar()
+				
+				char = PeekChar(1)
+				If char = 43 Or char = 45 Then ' "+" and "-"
+					GetChar()
+					char = PeekChar(1)
+				EndIf
+				
+				If char < 48 Or 57 < char Then
+					Throw ParserException("JParser#ReadNumberToken", "Malformed exponent in number", JMalformedNumberError, CurrentLine(), _line, _col)
+				EndIf
+				
+				Continue
+			ElseIf char < 48 Or 57 < char Then
+				Exit
+			EndIf
+			
+			GetChar() ' character was a valid number character, advance
+			char = PeekChar(1)
 		Wend
 	End Method
 	
 	Method NextToken:JToken(require:Int=-1, expected$="")
 		SkipWhitespace()
 		
-		If _offset => _strbuf.Length Then
-			Return Token(JTokenEof, _offset, _offset)
+		Local char% = _curChar
+		
+		If char = -1 Then
+			Return Token(JTokenEof, Position(), Position())
 		EndIf
 		
-		Local char% = _strbuf[_offset]
 		Local tok:JToken = New JToken
-		tok.start = _offset
+		tok.start = Position()
 		
 		Select char
 			Case CObjBegin
@@ -290,37 +453,37 @@ Type JParser
 				If Matches("rue") Then
 					tok.token = JTokenTrue
 				Else
-					Throw "JParser#NextToken: Invalid literal"
+					Throw ParserException("JParser#NextToken", "Invalid literal", JInvalidLiteralError, CurrentLine(), _line, _col)
 				EndIf
 			Case Cf
 				If Matches("alse") Then
 					tok.token = JTokenFalse
 				Else
-					Throw "JParser#NextToken: Invalid literal"
+					Throw ParserException("JParser#NextToken", "Invalid literal", JInvalidLiteralError, CurrentLine(), _line, _col)
 				EndIf
 			Case Cn
 				If Matches("ull") Then
 					tok.token = JTokenNull
 				Else
-					Throw "JParser#NextToken: Invalid literal"
+					Throw ParserException("JParser#NextToken", "Invalid literal", JInvalidLiteralError, CurrentLine(), _line, _col)
 				EndIf
 			Default
 				If JNumberStartingSet.Contains(char) Then
 					tok.token = JTokenNumber
 					ReadNumberToken
 				Else
-					Throw "JParser#NextToken: Invalid character while parsing JSON string"
+					Throw ParserException("JParser#NextToken", "Invalid character while parsing JSON string", JInvalidCharacterError, CurrentLine(), _line, _col)
 				EndIf
 		End Select
 		
-		tok.end_ = _offset
-		_offset :+ 1
+		tok.end_ = Position()
+		GetChar()
 		
-		If require <> -1 Then
+		If require <> -1 And tok.token <> require Then
 			If expected Then
-				Assert tok.token=require, "JParser#NextToken: Expected token "+expected+", found "+StringForToken(tok)
+				Throw ParserException("JParser#NextToken", "Expected token "+expected+", found "+StringForToken(tok), JInvalidTokenError, CurrentLine(), _line, _col)
 			Else
-				Assert tok.token, "JParser#NextToken: Invalid token "+StringForToken(tok)
+				Throw ParserException("JParser#NextToken", "Invalid token "+StringForToken(tok), JInvalidTokenError, CurrentLine(), _line, _col)
 			EndIf
 		EndIf
 		
@@ -328,14 +491,12 @@ Type JParser
 	End Method
 	
 	Method Matches:Int(s$)
-		Local off% = _offset + 1
 		For Local idx:Int = 0 Until s.Length
-			If off >= _strbuf.Length Or _strbuf[off] <> s[idx] Then
+			If PeekChar(idx+1) <> s[idx] Then
 				Return False
 			EndIf
-			off :+ 1
 		Next
-		_offset :+ s.Length
+		Skip(s.Length)
 		Return True
 	End Method
 	
@@ -366,7 +527,7 @@ Type JParser
 			Case JTokenEof
 				Return "EOF"
 			Default
-				Throw "JParser#StringForToken: Invalid token "+tok.token
+				Throw ParserException("JParser#StringForToken", "Invalid token "+tok.token, JInvalidTokenError, CurrentLine(), _line, _col)
 		End Select
 	End Method
 End Type
