@@ -105,7 +105,7 @@ Type JParser
 	
 	Method Parse()
 		 ' setup buffer with at least one line, and see if there's anything in it
-		If PeekChar(1) <> -1 Then
+		If PeekChar(1) = -1 Then
 			If _handler Then
 				_handler.BeginParsing()
 				_handler.EndParsing()
@@ -154,8 +154,9 @@ Type JParser
 		If _strbuf[_offset] = 10 Then
 			_lineOff = _offset + 1
 			_line :+ 1
-			_col = 1
+			_col = 0
 		EndIf
+		_col :+ 1
 		_offset :+ 1
 		DebugLog "GetChar: Returning "+Chr(_strbuf[_offset])
 		_curChar = _strbuf[_offset]
