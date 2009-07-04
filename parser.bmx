@@ -97,10 +97,16 @@ Type JParser
 		Return Self
 	End Method
 	
+	' returns the current handler
+	Method GetHandler:JParserHandler() NoDebug
+		Return _handler
+	End Method
+	
 	' Returns the old handler
-	Method SetHandler:JParserHandler( newhandler:JParserHandler )
+	Method SetHandler:JParserHandler( newhandler:JParserHandler ) NoDebug
 		Local orig:JParserHandler = _handler
 		_handler = newhandler
+		Return orig
 	End Method
 	
 	Method Parse()
