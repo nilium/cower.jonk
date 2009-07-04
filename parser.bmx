@@ -29,7 +29,7 @@ Function Token:JToken(token%)
 End Function
 
 Const JTOKENBUFFER_INITIAL_SIZE% = 48
-Const JTOKENBUFFER_MULTIPLIER! = 1.5!
+Const JTOKENBUFFER_MULTIPLIER! = 1.75!
 
 Type JToken
 	Field token%
@@ -111,7 +111,7 @@ Type JParser
 	' Initial length of the parser's buffer in Shorts
 	Const JPARSERBUFFER_INITIAL_SIZE%=32
 	' Amount by which to multiply the size of the parser's buffer when expanding it
-	Const JPARSERBUFFER_MULTIPLIER!=1.5!
+	Const JPARSERBUFFER_MULTIPLIER!=1.75!
 	
 	' Optional stream
 	Field _stream:TTextStream=Null
