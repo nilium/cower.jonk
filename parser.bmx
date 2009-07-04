@@ -136,11 +136,12 @@ Type JParser
 	
 	' Creates a stream from the object and uses it to buffer characters when needed
 	' Encoding defaults to UTF-8 unless specified otherwise
-	' internally, this processes JSON using UTF-16BE
+	' internally, this processes JSON using UTF-16BE/LE
 	'
 	' bufferLength specifies the length of the buffer in wide characters (UTF-16) - the buffer will
 	' be, at minimum, bufferLength*2 bytes in size, and may grow over time in certain circumstances.
-	' Buffer sizes of zero or less
+	' Buffer sizes of zero or less.  The recommended absolute minimum length of a buffer is around
+	' 8 characters - more is usually better if you can spare it.
 	Method InitWithStream:JParser(url:Object, handler:JParserHandler = Null, encoding%=JSONEncodingUTF8, bufferLength%=JParser.JPARSERBUFFER_INITIAL_SIZE)
 		If encoding = JSONEncodingUTF32 Then
 			Throw JException.Create("JParser#InitWithStream", "UTF-32 encoding is not supported", JUnsupportedEncodingError)
@@ -291,20 +292,37 @@ Type JParser
 			_col = 0
 		EndIf
 		
-		While _strbuf_length-1 <= _offset
+		If _strbuf_size = 1 Then
+			' Insert semi-hack to support 1-character initial buffers.  These will almost always end
+			' up being two or more characters by the time you're done, and if you've got
+			' true/false/null, probably over 5 characters.
+			' Basically, buffers smaller than 8 characters are not something you should waste your
+			' time with.
 			If _stream And Not _stream.Eof() Then
-				_offset :- _strbuf_length
-				
-				_strbuf_length = 0
-				Repeat
-					_strbuf[_strbuf_length] = _stream.ReadChar()
-					_strbuf_length :+ 1
-				Until _strbuf_length = _strbuf_size Or _stream.Eof()
-				
-				Continue
+				If initLen > 0 Then
+					_offset = -1
+				EndIf
+				_strbuf[0] = _stream.ReadChar()
+				_strbuf_length = 1
+			Else
+				Return -1
 			EndIf
-			Return -1
-		Wend
+		Else
+			While _strbuf_length-1 <= _offset
+				If _stream And Not _stream.Eof() Then
+					_offset :- _strbuf_length
+				
+					_strbuf_length = 0
+					Repeat
+						_strbuf[_strbuf_length] = _stream.ReadChar()
+						_strbuf_length :+ 1
+					Until _strbuf_length = _strbuf_size Or _stream.Eof()
+				
+					Continue
+				EndIf
+				Return -1
+			Wend
+		EndIf
 		
 		If initLen > 0 Then
 			_offset :+ 1
