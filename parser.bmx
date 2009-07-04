@@ -119,7 +119,7 @@ Type JParser
 	Field _strbuf:Short Ptr=Null
 	Field _strbuf_size:Int=0			' The size of the buffer in Shorts
 	Field _strbuf_length:Int=0			' The number of characters in the buffer that can be read
-	Field _offset:Int=0					' Offset into the buffer
+	Field _offset:Int=-1					' Offset into the buffer
 	' Debugging info
 	Field _line%=0						' Line number
 	Field _col%=0						' Column number
@@ -153,11 +153,11 @@ Type JParser
 		
 		_curChar = -1
 		
-		_offset = 0
+		_offset = -1
 		_strbuf_length = 0
 		
 		_line = 1
-		_col = 1
+		_col = 0
 		
 		Local rstream:TStream = ReadStream(url)
 		If Not rstream Then
@@ -172,7 +172,6 @@ Type JParser
 		If _strbuf = Null Then
 			Throw JException.Create("JParser#InitWithStream", "Unable to allocate buffer of size "+(_strbuf_size*2)+" bytes", JBufferAllocationError)
 		EndIf
-		_offset = 0
 		
 		Rem
 		' random code to test to see if URL was already a TTextStream.. decided against using it
@@ -287,7 +286,7 @@ Type JParser
 	Method GetChar%()
 		Local initLen:Int = _strbuf_length
 		
-		If initLen > 0 And _strbuf[_offset] = 10 Then
+		If _curChar = 10 Then
 			_line :+ 1
 			_col = 0
 		EndIf
@@ -324,10 +323,8 @@ Type JParser
 			Wend
 		EndIf
 		
-		If initLen > 0 Then
-			_offset :+ 1
-			_col :+ 1
-		EndIf
+		_offset :+ 1
+		_col :+ 1
 		
 		_curChar = _strbuf[_offset]
 		Return _curChar
