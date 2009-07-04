@@ -3,18 +3,19 @@ SuperStrict
 Import Brl.Retro
 
 Const JBufferAllocationError%=1
-Const JInvalidCharacterError%=2
-Const JInvalidEncodingError%=3
-Const JInvalidLiteralError%=4
-Const JInvalidOffsetError%=5
-Const JInvalidTokenError%=6
-Const JMalformedArrayError%=7
-Const JMalformedNumberError%=8
-Const JMalformedStringError%=9
-Const JNullStreamError%=10
-Const JNullTokenError%=11
-Const JStreamReadError%=12
-Const JUnsupportedEncodingError%=13
+Const JBufferSizeError%=2
+Const JInvalidCharacterError%=3
+Const JInvalidEncodingError%=4
+Const JInvalidLiteralError%=5
+Const JInvalidOffsetError%=6
+Const JInvalidTokenError%=7
+Const JMalformedArrayError%=8
+Const JMalformedNumberError%=9
+Const JMalformedStringError%=10
+Const JNullStreamError%=11
+Const JNullTokenError%=12
+Const JStreamReadError%=13
+Const JUnsupportedEncodingError%=14
 
 ' Generic exception, used where no specific exception is properly defined
 Type JException

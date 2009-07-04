@@ -22,18 +22,61 @@ Const JTokenArraySep:Int = 9
 Const JTokenValueSep:Int = 10
 Const JTokenEof:Int = 11
 
-Function Token:JToken(token%, start%, _end%)
+Function Token:JToken(token%)
 	Local t:JToken = New JToken
 	t.token = token
-	t.start = start
-	t.end_ = _end
 	Return t
 End Function
 
+Const JTOKENBUFFER_INITIAL_SIZE% = 48
+Const JTOKENBUFFER_MULTIPLIER! = 1.5!
+
 Type JToken
 	Field token%
-	Field start%
-	Field end_%
+	Field buffer:Short Ptr=Null, bufSize%=0, bufLen%=0
+	Field _bufS$=Null
+	
+	Method Delete() NoDebug
+		If buffer Then
+			MemFree(buffer)
+		EndIf
+	End Method
+	
+	Method BufferChar(c%)
+		If Not buffer Then
+			' create buffer
+			bufSize = JTOKENBUFFER_INITIAL_SIZE
+			buffer = Short Ptr(MemAlloc(bufSize*2))
+			bufLen = 0
+		ElseIf bufLen = bufSize Then
+			Local newsize% = Ceil(bufSize*JTOKENBUFFER_MULTIPLIER)
+			If newSize < bufLen Then
+				newSize = Ceil(bufLen*JTOKENBUFFER_MULTIPLIER) ' try to 
+			EndIf
+			
+			Local temp:Short Ptr = Short Ptr(MemAlloc(newSize*2))
+			If temp = Null Then
+				Throw JException.Create("JToken#BufferChar", "Unable to allocate buffer of size "+(newSize*2)+" bytes", JBufferAllocationError)
+			EndIf
+			
+			bufSize = newSize
+			MemCopy(temp, buffer, bufLen*2)
+			MemFree(buffer)
+			buffer = temp
+		EndIf
+		buffer[bufLen]=c
+		bufLen:+1
+	End Method
+	
+	Method ToString$()
+		If _bufS And (Not buffer Or _bufS.Length = bufLen) Then
+			Return _bufS
+		EndIf
+		_bufS = String.FromShorts(buffer, bufLen%)
+		MemFree(buffer)
+		buffer = Null
+		Return _bufS
+	End Method
 End Type
 
 Global JWhitespaceSet:TCharacterSet = TCharacterSet.ForWhitespace()
@@ -44,51 +87,131 @@ Global JDoubleSet:TCharacterSet = New TCharacterSet.InitWithString("eE.\-+")
 
 Public
 
+Const JSONEncodingLATIN1%=1
+Const JSONEncodingUTF8%=2
+Const JSONEncodingUTF16BE%=3
+Const JSONEncodingUTF16LE%=4
+Const JSONEncodingUTF32%=5				' Unsupported!  Will cause an exception to be thrown.
+
 Type JParser
-	Const CObjBegin% = $7B
-	Const CObjEnd% = $7D
-	Const CArrBegin% = $5B
-	Const CArrEnd% = $5D
-	Const CQuote% = $22
-	Const CColon% = $3A
-	Const CComma% = $2C
-	Const CEscape% = $5C
-	Const CComment% = $2F
-	Const Cf% = $66
-	Const Ct% = $74
-	Const Cn% = $6E
+	' Single characters to match against
+	Const CObjBegin% = $7B			' { object begin
+	Const CObjEnd% = $7D			' } object end
+	Const CArrBegin% = $5B			' [ array begin
+	Const CArrEnd% = $5D			' ] array end
+	Const CQuote% = $22				' string beginning/ending
+	Const CColon% = $3A				' value separator
+	Const CComma% = $2C				' array/member separator
+	Const CEscape% = $5C			' Escape character (\)
+'	Const CComment% = $2F			' Unused: match against // comments
+	Const Cf% = $66					' 'f' for false literals
+	Const Ct% = $74					' 't' for true literals
+	Const Cn% = $6E					' 'n' for null literals
 	
-	Field _stream:TStream
-	Field _strbuf$
-	Field _offset:Int
-	Field _line%
-	Field _col%
+	' Initial length of the parser's buffer in Shorts
+	Const JPARSERBUFFER_INITIAL_SIZE%=32
+	' Amount by which to multiply the size of the parser's buffer when expanding it
+	Const JPARSERBUFFER_MULTIPLIER!=1.5!
 	
-	Field _curChar:Int
+	' Optional stream
+	Field _stream:TTextStream=Null
+	' Buffer
+	Field _strbuf:Short Ptr=Null
+	Field _strbuf_size:Int=0			' The size of the buffer in Shorts
+	Field _strbuf_length:Int=0			' The number of characters in the buffer that can be read
+	Field _offset:Int=0					' Offset into the buffer
+	' Debugging info
+	Field _line%=0						' Line number
+	Field _col%=0						' Column number
 	
-	Field _handler:JParserHandler
+	Field _curChar:Int=-1				' Cached value of the current character
 	
-	' Creates a stream from the object
-	' precondition: for streams that are not TTextStreams, the stream MUST implement ReadString and Size, and all characters must be .
-	Method InitWithStream:JParser(url:Object, handler:JParserHandler = Null)
-		_strbuf = ""
+	Field _handler:JParserHandler=Null	' Event handler
+	
+	Method Delete()
+		If _strbuf Then
+			MemFree(_strbuf)
+		EndIf
+	End Method
+	
+	' Creates a stream from the object and uses it to buffer characters when needed
+	' Encoding defaults to UTF-8 unless specified otherwise
+	' internally, this processes JSON using UTF-16BE
+	'
+	' bufferLength specifies the length of the buffer in wide characters (UTF-16) - the buffer will
+	' be, at minimum, bufferLength*2 bytes in size, and may grow over time in certain circumstances.
+	' Buffer sizes of zero or less
+	Method InitWithStream:JParser(url:Object, handler:JParserHandler = Null, encoding%=JSONEncodingUTF8, bufferLength%=JParser.JPARSERBUFFER_INITIAL_SIZE)
+		If encoding = JSONEncodingUTF32 Then
+			Throw JException.Create("JParser#InitWithStream", "UTF-32 encoding is not supported", JUnsupportedEncodingError)
+		ElseIf encoding < JSONEncodingUTF8 Or JSONEncodingUTF32 < encoding Then
+			Throw JException.Create("JParser#InitWithStream", "Invalid encoding option specified", JInvalidEncodingError)
+		ElseIf bufferLength <= 0 Then
+			Throw JException.Create("JParser#InitWithStream", "Invalid buffer size for initializing parser with stream", JBufferSizeError)
+		EndIf
+		
+		_curChar = -1
+		
 		_offset = 0
+		_strbuf_length = 0
 		
 		_line = 1
 		_col = 1
 		
-		_stream = ReadStream(url)
+		Local rstream:TStream = ReadStream(url)
+		If Not rstream Then
+			Throw JException.Create("JParser#InitWithStream", "Unable to open stream for reading", JStreamReadError)
+		EndIf
+		' first, see if a textstream was already passed
+		_stream = TTextStream.Create(rstream, encoding)
+		
+		' Set up the buffer
+		_strbuf_size = bufferLength
+		_strbuf = Short Ptr(MemAlloc(_strbuf_size*2))
+		If _strbuf = Null Then
+			Throw JException.Create("JParser#InitWithStream", "Unable to allocate buffer of size "+(_strbuf_size*2)+" bytes", JBufferAllocationError)
+		EndIf
+		_offset = 0
+		
+		Rem
+		' random code to test to see if URL was already a TTextStream.. decided against using it
+		' for now - leaving it in 'cause I don't know if I'll re-use it later
+		_stream = TTextStream(url)
+		If Not _stream And url Then
+			Local rstream:TStream = ReadStream(url)
+			_stream = TTextStream(rstream)
+			If Not _stream And rstream Then
+				_stream = TTextStream.Create(rstream, encoding)
+			EndIf
+		EndIf
+		If Not _stream Then
+			Throw JException.Create("JParser#InitWithStream", "Unable to open stream for reading", JStreamReadError)
+		EndIf
+		EndRem
 		
 		SetHandler(handler)
+		
 		Return Self
 	End Method
 	
 	Method InitWithString:JParser(str$, handler:JParserHandler = Null)
-		_strbuf = str
+		
+		_curChar = -1
+		
+		If _strbuf Then
+			MemFree(_strbuf)
+		EndIf
+		
+		_strbuf = str.ToWString()
+		_strbuf_length = str.Length
+		_strbuf_size = _strbuf_length+1
 		_offset = 0
+		
 		_line = 1
 		_col = 1
+		
 		SetHandler(handler)
+		
 		Return Self
 	End Method
 	
@@ -104,9 +227,15 @@ Type JParser
 		Return orig
 	End Method
 	
-	Method Parse()
+	' If passException is True, will pass on exceptions to the ParserHandler, otherwise something
+	' else will have to catch them.
+	'
+	' Defaults to False because you should only use passExceptions when you think there might be a
+	' user error or something and you'd want to give them an error dialog or something.
+	Method Parse(passExceptions%=False)
 		 ' setup buffer with at least one line, and see if there's anything in it
-		If PeekChar(1) = -1 Then
+		GetChar()
+		If _curChar = -1 Then
 			If _handler Then
 				_handler.BeginParsing()
 				_handler.EndParsing()
@@ -148,26 +277,40 @@ Type JParser
 	
 	' PRIVATE
 	
-	Method SkipWhitespace()
+	Method SkipWhitespace() NoDebug
 		While _curChar <> -1 And JWhitespaceSet.Contains(_curChar)
 			GetChar()
 		Wend
 	End Method
 	
-	Method GetChar%() NoDebug
-		While (_strbuf.Length-1) <= _offset
+	Method GetChar%()
+		Local initLen:Int = _strbuf_length
+		
+		If initLen > 0 And _strbuf[_offset] = 10 Then
+			_line :+ 1
+			_col = 0
+		EndIf
+		
+		While _strbuf_length-1 <= _offset
 			If _stream And Not _stream.Eof() Then
-				_strbuf = _strbuf+_stream.ReadLine()
+				_offset :- _strbuf_length
+				
+				_strbuf_length = 0
+				Repeat
+					_strbuf[_strbuf_length] = _stream.ReadChar()
+					_strbuf_length :+ 1
+				Until _strbuf_length = _strbuf_size Or _stream.Eof()
+				
 				Continue
 			EndIf
 			Return -1
 		Wend
-		If _strbuf[_offset] = 10 Then
-			_line :+ 1
-			_col = 0
+		
+		If initLen > 0 Then
+			_offset :+ 1
+			_col :+ 1
 		EndIf
-		_col :+ 1
-		_offset :+ 1
+		
 		_curChar = _strbuf[_offset]
 		Return _curChar
 	End Method
@@ -175,28 +318,47 @@ Type JParser
 	' Peaks @n chars ahead - if n is greater than the buffer size, it will add as many lines to the
 	' buffer as is necessary until either EOF is reached or the buffer is large enough
 	' A negative @n will cause an exception to be thrown
-	Method PeekChar%(n%) NoDebug
+	Method PeekChar%(n%)
 		If n < 0 Then
 			Throw JException.Create("JParser#PeekChar", "Negative peek offset is invalid", JInvalidOffsetError)
 		EndIf
 		
 		Local off:Int = _offset+n
-		While _strbuf.Length <= off
-			If _stream And Not _stream.Eof() Then
-				_strbuf :+ _stream.ReadLine()
-				Continue
+		If _strbuf_length <= off Then
+			TrimBuffer()
+			off = _offset+n
+			
+			If _strbuf_length <= off And (_stream And Not _stream.Eof()) Then
+				Local newSize:Int = Ceil(_strbuf_size*JPARSERBUFFER_MULTIPLIER)
+				If newSize <= off Then
+					newSize = Ceil(off*JPARSERBUFFER_MULTIPLIER)
+				EndIf
+				
+				Local temp:Short Ptr = Short Ptr(MemAlloc(2*newSize))
+				If temp = Null Then
+					Throw JException.Create("JParser#PeekChar", "Unable to allocate buffer of size "+(newSize*2)+" bytes", JBufferAllocationError)
+				EndIf
+				
+				_strbuf_size = newSize
+				MemCopy(temp, _strbuf, _strbuf_length*2)
+				MemFree(_strbuf)
+				_strbuf = temp
+				
+				Repeat
+					_strbuf[_strbuf_length] = _stream.ReadChar()
+					_strbuf_length :+ 1
+				Until _strbuf_length = _strbuf_size Or _stream.Eof()
 			EndIf
-			Return -1
-		Wend
+			
+			If _strbuf_length <= off
+				Return -1
+			EndIf
+		EndIf
 		
-		Return _strbuf[_offset+n]
+		Return _strbuf[off]
 	End Method
 	
-	Method Position%()
-		Return _offset
-	End Method
-	
-	Method Skip(n%) NoDebug
+	Method Skip(n%)
 		If n < 0 Then
 			Throw JException.Create("JParser#Skip", "Negative skip amount is invalid", JInvalidOffsetError)
 		EndIf
@@ -204,6 +366,30 @@ Type JParser
 		While n And GetChar() <> -1
 			n :- 1
 		Wend
+	End Method
+	
+	Method TrimBuffer()
+		Local tail_len:Int = _strbuf_length-_offset
+		If tail_len < 0 Then
+			Throw ParserException("JParser#TrimBuffer", "Length of tail for buffer is a negative value", JInvalidOffsetError, _line, _col)
+		EndIf
+		
+		If _offset = 0 Or tail_len = 0 Or Not _stream Or _stream.Eof() Then
+			Return
+		EndIf
+		
+		Local copyfrom:Short Ptr = _strbuf + _offset
+		For Local idx:Int = _offset Until tail_len
+			_strbuf[idx] = copyfrom[idx]
+		Next
+		' Fill remainder of buffer
+		_offset = 0
+		_strbuf_length = tail_len
+		
+		Repeat
+			_strbuf[_strbuf_length] = _stream.ReadChar()
+			_strbuf_length :+ 1
+		Until _strbuf_length = _strbuf_size Or _stream.Eof()
 	End Method
 	
 	Method ReadStringValue(tok:JToken)
@@ -216,7 +402,7 @@ Type JParser
 		EndIf
 		
 		If _handler Then
-			Local str$ = _strbuf[tok.start+1..tok.end_]
+			Local str$ = tok.ToString()
 			Try
 				str = DecodeJSONString(str)
 			Catch ex:Object
@@ -236,7 +422,7 @@ Type JParser
 		EndIf
 
 		If _handler Then
-			Local str$ = _strbuf[tok.start+1..tok.end_]
+			Local str$ = tok.ToString()
 			Try
 				str = DecodeJSONString(str)
 			Catch ex:Object
@@ -345,7 +531,7 @@ Type JParser
 				ReadStringValue(tok)
 			Case JTokenNumber
 				If _handler Then
-					Local ext$ = _strbuf[tok.start..tok.end_+1]
+					Local ext$ = tok.ToString()
 					If JDoubleSet.FindInString(ext) <> -1 Then
 						_handler.NumberValue(ext, True)
 					Else
@@ -365,21 +551,24 @@ Type JParser
 		End Select
 	End Method
 	
-	Method ReadStringToken()
+	Method ReadStringToken(into:JToken)
 		Local char% = GetChar()
 		While char <> -1
 			If char = CEscape Then
-				GetChar()
+				into.BufferChar(char)
+				char = GetChar()
 			ElseIf char = CQuote Then
 				Return
 			EndIf
 			
+			into.BufferChar(char)
 			char = GetChar()
 		Wend
 		Throw ParserException("JParser#ReadStringToken", "Encountered malformed string", JMalformedStringError, _line, _col)
 	End Method
 	
-	Method ReadNumberToken()
+	Method ReadNumberToken(into:JToken)
+		into.BufferChar(_curChar)
 		Local eFound%=False, decFound%=(_curChar=46)
 		Local char% = PeekChar(1)
 		While char <> -1
@@ -396,10 +585,12 @@ Type JParser
 				EndIf
 				
 				eFound = True
+				into.BufferChar(char)
 				GetChar()
 				
 				char = PeekChar(1)
 				If char = 43 Or char = 45 Then ' "+" and "-"
+					into.BufferChar(char)
 					GetChar()
 					char = PeekChar(1)
 				EndIf
@@ -413,6 +604,7 @@ Type JParser
 				Exit
 			EndIf
 			
+			into.BufferChar(char)
 			GetChar() ' character was a valid number character, advance
 			char = PeekChar(1)
 		Wend
@@ -424,11 +616,10 @@ Type JParser
 		Local char% = _curChar
 		
 		If char = -1 Then
-			Return Token(JTokenEof, Position(), Position())
+			Return Token(JTokenEof)
 		EndIf
 		
 		Local tok:JToken = New JToken
-		tok.start = Position()
 		
 		Select char
 			Case CObjBegin
@@ -441,7 +632,7 @@ Type JParser
 				tok.token = JTokenArrayEnd
 			Case CQuote
 				tok.token = JTokenString
-				ReadStringToken
+				ReadStringToken(tok)
 			Case CComma
 				tok.token = JTokenArraySep
 			Case CColon
@@ -467,13 +658,12 @@ Type JParser
 			Default
 				If JNumberStartingSet.Contains(char) Then
 					tok.token = JTokenNumber
-					ReadNumberToken
+					ReadNumberToken(tok)
 				Else
 					Throw ParserException("JParser#NextToken", "Invalid character while parsing JSON string", JInvalidCharacterError, _line, _col)
 				EndIf
 		End Select
 		
-		tok.end_ = Position()
 		GetChar()
 		
 		If require <> -1 And tok.token <> require Then
@@ -508,9 +698,9 @@ Type JParser
 			Case JTokenArrayEnd
 				Return "]"
 			Case JTokenString
-				Return _strbuf[tok.start..tok.end_+1]
+				Return tok.ToString()
 			Case JTokenNumber
-				Return _strbuf[tok.start..tok.end_+1]
+				Return tok.ToString()
 			Case JTokenTrue
 				Return "true"
 			Case JTokenFalse
