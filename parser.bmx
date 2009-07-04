@@ -63,7 +63,6 @@ Type JParser
 	Field _stream:TStream
 	Field _strbuf$
 	Field _offset:Int
-	Field _lineOff:Int
 	Field _line%
 	Field _col%
 	
@@ -116,10 +115,22 @@ Type JParser
 			EndIf
 			Return
 		EndIf
-		_curChar = _strbuf[_offset] ' load first character
+		
 		Local tok:JToken = NextToken()
+		
 		If _handler Then
 			_handler.BeginParsing()
+		EndIf
+		
+		If tok.token <> JTokenArrayBegin And tok.token <> JTokenObjectBegin And tok.token <> JTokenEof Then
+			' as defined in rfc4627, a JSON text must begin with an object or array
+			Local ex:JParserException = ParserException("JToken#Parse", "Text does not begin with an object or array", JInvalidTokenError, _line, _col)
+			If Not _handler Or Not _handler.Error(ex) Then
+				Throw ex
+			EndIf
+		EndIf
+		
+		If _handler And passExceptions Then
 			Try
 				If tok.token <> JTokenEof Then
 					ReadValue(tok)
@@ -130,10 +141,10 @@ Type JParser
 					Throw error
 				EndIf
 			End Try
-		Else
-			If tok.token <> JTokenEof Then
-				ReadValue(tok)
-			EndIf
+			ReadValue(tok)
+			_handler.EndParsing()
+		ElseIf tok.token <> JTokenEof Then
+			ReadValue(tok)
 		EndIf
 	End Method
 	
@@ -154,7 +165,6 @@ Type JParser
 			Return -1
 		Wend
 		If _strbuf[_offset] = 10 Then
-			_lineOff = _offset + 1
 			_line :+ 1
 			_col = 0
 		EndIf
@@ -198,23 +208,13 @@ Type JParser
 		Wend
 	End Method
 	
-	Method CurrentLine$()
-		Local nextEndline%
-		For nextEndline = _lineOff Until _strbuf.Length
-			If _strbuf[nextEndline] = 10 Then
-				Exit
-			EndIf
-		Next
-		Return _strbuf[_lineOff..nextEndLine]
-	End Method
-	
 	Method ReadStringValue(tok:JToken)
 		If Not tok Then
 			Throw JException.Create("JParser#ReadStringValue", "Token is null", JNullTokenError)
 		EndIf
 		
 		If tok.token <> JTokenString Then
-			Throw ParserException("JParser#ReadStringValue", "Expected string literal, found "+StringForToken(tok), JInvalidTokenError, CurrentLine(), _line, _col)
+			Throw ParserException("JParser#ReadStringValue", "Expected string literal, found "+StringForToken(tok), JInvalidTokenError, _line, _col)
 		EndIf
 		
 		If _handler Then
@@ -222,7 +222,7 @@ Type JParser
 			Try
 				str = DecodeJSONString(str)
 			Catch ex:Object
-				Throw ParserException("JParser#ReadStringValue", "Error decoding string literal", JMalformedStringError, CurrentLine(), _line, _col, ex)
+				Throw ParserException("JParser#ReadStringValue", "Error decoding string literal", JMalformedStringError, _line, _col, ex)
 			End Try
 			_handler.StringValue(str)
 		EndIf
@@ -234,7 +234,7 @@ Type JParser
 		EndIf
 		
 		If tok.token <> JTokenString Then
-			Throw ParserException("JParser#ReadObjectKey", "Expected string literal, found "+StringForToken(tok), JInvalidTokenError, CurrentLine(), _line, _col)
+			Throw ParserException("JParser#ReadObjectKey", "Expected string literal, found "+StringForToken(tok), JInvalidTokenError, _line, _col)
 		EndIf
 
 		If _handler Then
@@ -242,7 +242,7 @@ Type JParser
 			Try
 				str = DecodeJSONString(str)
 			Catch ex:Object
-				Throw ParserException("JParser#ReadObjectKey", "Error decoding string literal", JMalformedStringError, CurrentLine(), _line, _col, ex)
+				Throw ParserException("JParser#ReadObjectKey", "Error decoding string literal", JMalformedStringError, _line, _col, ex)
 			End Try
 			_handler.ObjectKey(str)
 		EndIf
@@ -254,7 +254,7 @@ Type JParser
 		EndIf
 		
 		If tok.token <> JTokenArrayBegin Then
-			Throw ParserException("JParser#ReadArrayValue", "Expected [, found "+StringForToken(tok), JInvalidTokenError, CurrentLine(), _line, _col)
+			Throw ParserException("JParser#ReadArrayValue", "Expected [, found "+StringForToken(tok), JInvalidTokenError, _line, _col)
 		EndIf
 		
 		If _handler Then _handler.ArrayBegin()
@@ -276,7 +276,7 @@ Type JParser
 					If _handler Then _handler.ArrayEnd()
 					Exit
 				Default
-					Throw ParserException("JParser#ReadArrayValue", "Malformed array: "+StringForToken(tok), JMalformedArrayError, CurrentLine(), _line, _col)
+					Throw ParserException("JParser#ReadArrayValue", "Malformed array: "+StringForToken(tok), JMalformedArrayError, _line, _col)
 			End Select
 		Wend
 	End Method
@@ -287,7 +287,7 @@ Type JParser
 		EndIf
 		
 		If tok.token <> JTokenObjectBegin Then
-			Throw ParserException("JReaded#ReadObjectValue", "Expected {, found "+StringForToken(tok), JInvalidTokenError, CurrentLine(), _line, _col)
+			Throw ParserException("JReaded#ReadObjectValue", "Expected {, found "+StringForToken(tok), JInvalidTokenError, _line, _col)
 		EndIf
 		
 		If _handler Then _handler.ObjectBegin()
@@ -298,7 +298,7 @@ Type JParser
 			tok = NextToken()
 			
 			If tok.token = JTokenEof Then
-				Throw ParserException("JParser#ReadObjectValue", "Expected } or field but reached EOF", JInvalidTokenError, CurrentLine(), _line, _col)
+				Throw ParserException("JParser#ReadObjectValue", "Expected } or field but reached EOF", JInvalidTokenError, _line, _col)
 			EndIf
 			
 			
@@ -306,7 +306,7 @@ Type JParser
 			Select tok.token
 				Case JTokenString
 					If valueread Then
-						Throw ParserException("JParser#ReadObjectValue", "Expected , but found string literal", JInvalidTokenError, CurrentLine(), _line, _col)
+						Throw ParserException("JParser#ReadObjectValue", "Expected , but found string literal", JInvalidTokenError, _line, _col)
 					EndIf
 					
 					
@@ -317,7 +317,7 @@ Type JParser
 						
 				Case JTokenArraySep
 					If Not valueread Then
-						Throw ParserException("JParser#ReadObjectValue", "Expected } or name, found field separator", JInvalidTokenError, CurrentLine(), _line, _col)
+						Throw ParserException("JParser#ReadObjectValue", "Expected } or name, found field separator", JInvalidTokenError, _line, _col)
 					EndIf
 					
 					valueread = False
@@ -327,7 +327,7 @@ Type JParser
 					Exit
 					
 				Default
-					Throw ParserException("JParser#ReadObjectValue", "Invalid token "+StringForToken(tok), JInvalidTokenError, CurrentLine(), _line, _col)
+					Throw ParserException("JParser#ReadObjectValue", "Invalid token "+StringForToken(tok), JInvalidTokenError, _line, _col)
 			End Select
 		Wend
 	End Method
@@ -361,9 +361,9 @@ Type JParser
 			Case JTokenFalse
 				If _handler Then _handler.BooleanValue(False)
 			Case JTokenEof
-				Throw ParserException("JParser#ReadValue", "No value found; reached EOF", JInvalidTokenError, CurrentLine(), _line, _col)
+				Throw ParserException("JParser#ReadValue", "No value found; reached EOF", JInvalidTokenError, _line, _col)
 			Default
-				Throw ParserException("JParser#ReadValue", "Invalid token received "+StringForToken(tok), JInvalidTokenError, CurrentLine(), _line, _col)
+				Throw ParserException("JParser#ReadValue", "Invalid token received "+StringForToken(tok), JInvalidTokenError, _line, _col)
 		End Select
 	End Method
 	
@@ -378,7 +378,7 @@ Type JParser
 			
 			char = GetChar()
 		Wend
-		Throw ParserException("JParser#ReadStringToken", "Encountered malformed string", JMalformedStringError, CurrentLine(), _line, _col)
+		Throw ParserException("JParser#ReadStringToken", "Encountered malformed string", JMalformedStringError, _line, _col)
 	End Method
 	
 	Method ReadNumberToken()
@@ -387,14 +387,14 @@ Type JParser
 		While char <> -1
 			If char = 46 Then
 				If decFound Then
-					Throw ParserException("JParser#ReadNumbertoken", "Malformed fractional component in number, fraction already defined", JMalformedNumberError, CurrentLine(), _line, _col)
+					Throw ParserException("JParser#ReadNumbertoken", "Malformed fractional component in number, fraction already defined", JMalformedNumberError, _line, _col)
 				ElseIf eFound Then
-					Throw ParserException("JParser#ReadNumbertoken", "Malformed fractional component in number, exponent already defined", JMalformedNumberError, CurrentLine(), _line, _col)
+					Throw ParserException("JParser#ReadNumbertoken", "Malformed fractional component in number, exponent already defined", JMalformedNumberError, _line, _col)
 				EndIf
 				decFound = True
 			ElseIf char = 69 Or char = 101 Then	' "E" and "e"
 				If eFound Then
-					Throw ParserException("JParser#ReadNumbertoken", "Malformed exponent in number, exponent already defined", JMalformedNumberError, CurrentLine(), _line, _col)
+					Throw ParserException("JParser#ReadNumbertoken", "Malformed exponent in number, exponent already defined", JMalformedNumberError, _line, _col)
 				EndIf
 				
 				eFound = True
@@ -407,7 +407,7 @@ Type JParser
 				EndIf
 				
 				If char < 48 Or 57 < char Then
-					Throw ParserException("JParser#ReadNumberToken", "Malformed exponent in number", JMalformedNumberError, CurrentLine(), _line, _col)
+					Throw ParserException("JParser#ReadNumberToken", "Malformed exponent in number", JMalformedNumberError, _line, _col)
 				EndIf
 				
 				Continue
@@ -452,26 +452,26 @@ Type JParser
 				If Matches("rue") Then
 					tok.token = JTokenTrue
 				Else
-					Throw ParserException("JParser#NextToken", "Invalid literal", JInvalidLiteralError, CurrentLine(), _line, _col)
+					Throw ParserException("JParser#NextToken", "Invalid literal", JInvalidLiteralError, _line, _col)
 				EndIf
 			Case Cf
 				If Matches("alse") Then
 					tok.token = JTokenFalse
 				Else
-					Throw ParserException("JParser#NextToken", "Invalid literal", JInvalidLiteralError, CurrentLine(), _line, _col)
+					Throw ParserException("JParser#NextToken", "Invalid literal", JInvalidLiteralError, _line, _col)
 				EndIf
 			Case Cn
 				If Matches("ull") Then
 					tok.token = JTokenNull
 				Else
-					Throw ParserException("JParser#NextToken", "Invalid literal", JInvalidLiteralError, CurrentLine(), _line, _col)
+					Throw ParserException("JParser#NextToken", "Invalid literal", JInvalidLiteralError, _line, _col)
 				EndIf
 			Default
 				If JNumberStartingSet.Contains(char) Then
 					tok.token = JTokenNumber
 					ReadNumberToken
 				Else
-					Throw ParserException("JParser#NextToken", "Invalid character while parsing JSON string", JInvalidCharacterError, CurrentLine(), _line, _col)
+					Throw ParserException("JParser#NextToken", "Invalid character while parsing JSON string", JInvalidCharacterError, _line, _col)
 				EndIf
 		End Select
 		
@@ -480,9 +480,9 @@ Type JParser
 		
 		If require <> -1 And tok.token <> require Then
 			If expected Then
-				Throw ParserException("JParser#NextToken", "Expected token "+expected+", found "+StringForToken(tok), JInvalidTokenError, CurrentLine(), _line, _col)
+				Throw ParserException("JParser#NextToken", "Expected token "+expected+", found "+StringForToken(tok), JInvalidTokenError, _line, _col)
 			Else
-				Throw ParserException("JParser#NextToken", "Invalid token "+StringForToken(tok), JInvalidTokenError, CurrentLine(), _line, _col)
+				Throw ParserException("JParser#NextToken", "Invalid token "+StringForToken(tok), JInvalidTokenError, _line, _col)
 			EndIf
 		EndIf
 		
@@ -526,7 +526,7 @@ Type JParser
 			Case JTokenEof
 				Return "EOF"
 			Default
-				Throw ParserException("JParser#StringForToken", "Invalid token "+tok.token, JInvalidTokenError, CurrentLine(), _line, _col)
+				Throw ParserException("JParser#StringForToken", "Invalid token "+tok.token, JInvalidTokenError, _line, _col)
 		End Select
 	End Method
 End Type

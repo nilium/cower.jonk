@@ -2,15 +2,19 @@ SuperStrict
 
 Import Brl.Retro
 
-Const JInvalidTokenError%=1
-Const JStreamReadError%=2
-Const JNullTokenError%=3
-Const JInvalidOffsetError%=4
-Const JMalformedArrayError%=5
-Const JMalformedStringError%=6
-Const JMalformedNumberError%=7
-Const JInvalidCharacterError%=8
-Const JInvalidLiteralError%=9
+Const JBufferAllocationError%=1
+Const JInvalidCharacterError%=2
+Const JInvalidEncodingError%=3
+Const JInvalidLiteralError%=4
+Const JInvalidOffsetError%=5
+Const JInvalidTokenError%=6
+Const JMalformedArrayError%=7
+Const JMalformedNumberError%=8
+Const JMalformedStringError%=9
+Const JNullStreamError%=10
+Const JNullTokenError%=11
+Const JStreamReadError%=12
+Const JUnsupportedEncodingError%=13
 
 ' Generic exception, used where no specific exception is properly defined
 Type JException
@@ -41,10 +45,9 @@ End Type
 Type JParserException Extends JException
 	Field lineNumber:Int
 	Field column:Int
-	Field line:String
 	
 	Method ToString$()
-		Local s$ = "["+error+":"+lineNumber+","+column+"] "+method_+": "+message+"~n"+line+"~n"+RSet("^",column)
+		Local s$ = "["+error+":"+lineNumber+","+column+"] "+method_+": "+message
 		If inner Then
 			Return s+"~n"+inner.ToString()
 		EndIf
@@ -52,12 +55,11 @@ Type JParserException Extends JException
 	End Method
 End Type
 
-Function ParserException:JParserException(_method:String, msg$, errorcode%, line:String, lineNumber:Int, column:Int, inner:Object = Null)
+Function ParserException:JParserException(_method:String, msg$, errorcode%, lineNumber:Int, column:Int, inner:Object = Null)
 	Local ex:JParserException = New JParserException
 	ex.error = errorcode
 	ex.lineNumber = lineNumber
 	ex.column = column
-	ex.line = line
 	ex.message = msg
 	ex.method_ = _method
 	ex.inner = inner

@@ -95,6 +95,9 @@ End Function
 
 Function DecodeJSONString:String(str:String)
 	Local buf:Short Ptr = Short Ptr(MemAlloc(str.Length*2))
+	If buf = Null Then
+		Throw JException.Create("DecodeJSONString", "Unable to allocate buffer of size "+(str.Length*2)+" bytes", JBufferAllocationError)
+	EndIf
 	Local bufSize:Int = 0
 	Local p:Short Ptr = buf
 	Local char:Int
