@@ -1,7 +1,5 @@
 SuperStrict
 
-Import brl.Stream
-Import brl.TextStream
 Import cower.Charset
 Import cower.Numerical
 
