@@ -531,7 +531,7 @@ Type JParser
 		Wend
 	End Method
 	
-	Method ReadValue:Object(tok:JToken)
+	Method ReadValue(tok:JToken)
 		If Not tok Then
 			Throw JException.Create("JParser#ReadValue", "Token is null", JNullTokenError)
 		EndIf
