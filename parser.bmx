@@ -1,7 +1,5 @@
 SuperStrict
 
-Import brl.LinkedList
-Import brl.Map
 Import brl.Stream
 Import brl.TextStream
 Import cower.Charset
