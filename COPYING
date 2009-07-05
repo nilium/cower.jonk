@@ -1,4 +1,3 @@
-Rem
 Copyright (c) 2009 Noel R. Cower
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -18,33 +17,3 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
-EndRem
-
-SuperStrict
-
-Import "exception.bmx"
-
-Type JParserHandler Abstract
-	' Parser state
-	Method BeginParsing() Abstract
-	Method EndParsing() Abstract
-	
-	' Object handler
-	Method ObjectBegin() Abstract
-	Method ObjectKey(name$) Abstract
-	Method ObjectEnd() Abstract
-	
-	' Array handler
-	Method ArrayBegin() Abstract
-	Method ArrayEnd() Abstract
-	
-	' Values
-	Method NumberValue(number$, isdecimal%) Abstract
-	Method StringValue(value$) Abstract
-	Method BooleanValue(value%) Abstract
-	Method NullValue() Abstract
-	
-	' Errors
-	' Return True if the error was handled, false if not
-	Method Error%(err:JParserException) Abstract
-End Type
