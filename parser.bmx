@@ -227,7 +227,7 @@ Type JParser
 		_strbuf = str.ToWString()
 		_strbuf_length = str.Length
 		_strbuf_size = _strbuf_length+1
-		_offset = 0
+		_offset = -1
 		
 		_line = 1
 		_col = 1
@@ -290,6 +290,7 @@ Type JParser
 					Throw error
 				EndIf
 			End Try
+		ElseIf _handler Then
 			ReadValue(tok)
 			_handler.EndParsing()
 		ElseIf tok.token <> JTokenEof Then
