@@ -24,7 +24,7 @@ SuperStrict
 
 Import "exception.bmx"
 
-Type JParserHandler Abstract
+Type JEventHandler Abstract
 	' Parser state
 	Method BeginParsing() Abstract
 	Method EndParsing() Abstract

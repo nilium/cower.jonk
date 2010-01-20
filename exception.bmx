@@ -30,14 +30,15 @@ Const JInvalidCharacterError%=3
 Const JInvalidEncodingError%=4
 Const JInvalidLiteralError%=5
 Const JInvalidOffsetError%=6
-Const JInvalidTokenError%=7
-Const JMalformedArrayError%=8
-Const JMalformedNumberError%=9
-Const JMalformedStringError%=10
-Const JNullStreamError%=11
-Const JNullTokenError%=12
-Const JStreamReadError%=13
-Const JUnsupportedEncodingError%=14
+Const JInvalidOperationError%=7
+Const JInvalidTokenError%=8
+Const JMalformedArrayError%=9
+Const JMalformedNumberError%=10
+Const JMalformedStringError%=11
+Const JNullStreamError%=12
+Const JNullTokenError%=13
+Const JStreamReadError%=14
+Const JUnsupportedEncodingError%=15
 
 ' Generic exception, used where no specific exception is properly defined
 Type JException

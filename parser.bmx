@@ -115,6 +115,14 @@ Const JSONEncodingUTF16BE%=3
 Const JSONEncodingUTF16LE%=4
 Const JSONEncodingUTF32%=5				' Unsupported!  Will cause an exception to be thrown.
 
+Rem
+bbdoc: Event-driven JSON parser
+
+JParser reads a JSON text and sends messages regarding what it finds to a JEventHandler.  It does
+not create any objects other than what it needs to parse the text- tokens, buffers, strings.
+
+To actually make anything with 
+EndRem
 Type JParser
 	' Single characters to match against
 	Const CObjBegin% = $7B			' { object begin
@@ -148,7 +156,7 @@ Type JParser
 	
 	Field _curChar:Int=-1				' Cached value of the current character
 	
-	Field _handler:JParserHandler=Null	' Event handler
+	Field _handler:JEventHandler=Null	' Event handler
 	
 	Method Delete()
 		If _strbuf Then
@@ -164,7 +172,7 @@ Type JParser
 	' be, at minimum, bufferLength*2 bytes in size, and may grow over time in certain circumstances.
 	' Buffer sizes of zero or less.  The recommended absolute minimum length of a buffer is around
 	' 8 characters - more is usually better if you can spare it.
-	Method InitWithStream:JParser(url:Object, handler:JParserHandler = Null, encoding%=JSONEncodingUTF8, bufferLength%=JParser.JPARSERBUFFER_INITIAL_SIZE)
+	Method InitWithStream:JParser(url:Object, handler:JEventHandler = Null, encoding%=JSONEncodingUTF8, bufferLength%=JParser.JPARSERBUFFER_INITIAL_SIZE)
 		If encoding = JSONEncodingUTF32 Then
 			Throw JException.Create("JParser#InitWithStream", "UTF-32 encoding is not supported", JUnsupportedEncodingError)
 		ElseIf encoding < JSONEncodingUTF8 Or JSONEncodingUTF32 < encoding Then
@@ -216,7 +224,7 @@ Type JParser
 		Return Self
 	End Method
 	
-	Method InitWithString:JParser(str$, handler:JParserHandler = Null)
+	Method InitWithString:JParser(str$, handler:JEventHandler = Null)
 		
 		_curChar = -1
 		
@@ -238,18 +246,18 @@ Type JParser
 	End Method
 	
 	' returns the current handler
-	Method GetHandler:JParserHandler() NoDebug
+	Method GetHandler:JEventHandler() NoDebug
 		Return _handler
 	End Method
 	
 	' Returns the old handler
-	Method SetHandler:JParserHandler( newhandler:JParserHandler ) NoDebug
-		Local orig:JParserHandler = _handler
+	Method SetHandler:JEventHandler( newhandler:JEventHandler ) NoDebug
+		Local orig:JEventHandler = _handler
 		_handler = newhandler
 		Return orig
 	End Method
 	
-	' If passException is True, will pass on exceptions to the ParserHandler, otherwise something
+	' If passException is True, will pass on exceptions to the EventHandler, otherwise something
 	' else will have to catch them.
 	'
 	' Defaults to False because you should only use passExceptions when you think there might be a

@@ -34,7 +34,7 @@ Import "jsonliterals.bmx"
 
 Public
 
-Type JObjectReader Extends JParserHandler
+Type JObjectReader Extends JEventHandler
 	Field _head:Object[]
 	Field _headIdx:Int = -1
 	

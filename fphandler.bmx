@@ -41,7 +41,7 @@ Const JErrorHandler% = 11
 Const JHandlerCount% = JErrorHandler+1
 
 ' Passes messages onto callbacks vs. having its own means of handling events
-Type JFPParserHandler Extends JParserHandler
+Type JFPEventHandler Extends JEventHandler
 	Field _context:Object
 	Field _beginParse(ctx:Object)=Null
 	Field _endParse(ctx:Object)=Null
@@ -56,16 +56,16 @@ Type JFPParserHandler Extends JParserHandler
 	Field _nullValue(ctx:Object)=Null
 	Field _error:Int(err:JParserException)=Null
 	
-	Method Init:JFPParserHandler()
+	Method Init:JFPEventHandler()
 		Return Self
 	End Method
 	
-	Method InitWithContext:JFPParserHandler( ctx:Object )
+	Method InitWithContext:JFPEventHandler( ctx:Object )
 		_context = ctx
 		Return Self
 	End Method
 	
-	Method InitWithHandlers:JFPParserHandler( handlers:Byte Ptr[], ctx:Object=Null )
+	Method InitWithHandlers:JFPEventHandler( handlers:Byte Ptr[], ctx:Object=Null )
 		Assert handlers.Length <= JHandlerCount ..
 			Else "JCallbackParser#InitWithHandlers: Invalid number of handlers (must be JHandlerCount or less)"
 		

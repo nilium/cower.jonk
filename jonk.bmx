@@ -22,6 +22,9 @@ EndRem
 
 SuperStrict
 
+Rem
+bbdoc: Parsers/Javascript Object Notation Kit
+EndRem
 Module Cower.JONK
 
 ModuleInfo "Name: Javascript Object Notation Kit"
